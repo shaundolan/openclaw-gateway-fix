@@ -256,6 +256,7 @@ Committed implementation slices so far:
 - `9305a235b3` `Media: extract runtime execution`
 - `37ee04e9b0` `Media: extract runtime auto and orchestration`
 - `523e30a2d8` `Media: extract runtime planning helpers`
+- `8c68a4c63b` `Media: extract runtime API composition`
 - `36711383f6` `TTS: extract runtime registry`
 - `f36f8f9e2d` `TTS: extract runtime execution`
 - `fa4f53896e` `TTS: extract runtime setup`
@@ -271,7 +272,7 @@ What is still missing for these phases:
 - broader lifecycle ownership beyond the loader state machine, service-lifecycle boundary, CLI-lifecycle boundary, session-owned activation state, and explicit discovery-policy, activation-policy, and finalization-policy outcomes, remaining policy gate ownership, and broad host-owned registries described for Phase 2
 - minimal SDK compatibility work beyond preserving current behavior indirectly through existing loading
 - host-owned conversation binding, interaction routing, ingress claim, and generic interactive control surfaces
-- remaining media compatibility-facade cleanup, plus catalog-backed runtime-family registration for embeddings, media, and TTS
+- catalog-backed runtime-family registration for embeddings, media, and TTS
 - explicit support for extension-backed search, with a generic split between agent-visible tool publication and optional runtime-internal search backends
 - any pilot migration, event pipeline, canonical catalog, or arbitration implementation
 
@@ -281,7 +282,7 @@ Recent plan refinements:
 - it now explicitly treats interactive callback routing, namespace ownership, dedupe, and fallback behavior as first-class migration surfaces
 - it now explicitly treats inbound claim as a canonical ingress-stage concern rather than a permanent plugin-era hook shape
 - it now explicitly treats Telegram and Discord as the first validated rollout targets for interactive control surfaces while keeping the underlying contracts generic, host-owned, and kernel-agnostic
-- it now explicitly treats embeddings, media understanding, and TTS as in-progress host-owned subsystem runtimes, with embedding selection, fallback routing, public runtime surface, result typing, manager-side batch and fallback policy, sync plus reindex planning, sync plus reindex orchestration, reindex sync-body execution plus unsafe reset, and safe-reindex temp-db creation, file swap, reopen, and cleanup now extracted, media registry, execution, auto-entry selection, active-model fallback, orchestration, and planning helpers now extracted, TTS registry, execution, request setup, config normalization, preferences, payload planning, shared status state, and API composition now extracted, and the remaining media compatibility-facade cleanup plus catalog-backed runtime-family registration for embeddings, media, and TTS still pending, all with capability routing, typed request envelopes, provider-id normalization, and fallback policy
+- it now explicitly treats embeddings, media understanding, and TTS as in-progress host-owned subsystem runtimes, with embedding selection, fallback routing, public runtime surface, result typing, manager-side batch and fallback policy, sync plus reindex planning, sync plus reindex orchestration, reindex sync-body execution plus unsafe reset, and safe-reindex temp-db creation, file swap, reopen, and cleanup now extracted, media registry, execution, auto-entry selection, active-model fallback, orchestration, planning helpers, remaining API composition, and lazy entrypoint wiring now extracted, TTS registry, execution, request setup, config normalization, preferences, payload planning, shared status state, and API composition now extracted, and catalog-backed runtime-family registration for embeddings, media, and TTS still pending, all with capability routing, typed request envelopes, provider-id normalization, and fallback policy
 - it now explicitly rejects widening the legacy `registerProvider(...)` or `ProviderPlugin` surface into a universal runtime API while retaining capability routing, typed request envelopes, provider-id normalization, and fallback behavior where those are part of the target model
 - it now explicitly treats extension-backed search as either a canonical tool contribution or a host-owned runtime backend depending on whether the search surface is agent-visible
 

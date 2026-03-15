@@ -242,6 +242,7 @@ Committed implementation slices so far:
 - `9305a235b3` `Media: extract runtime execution`
 - `37ee04e9b0` `Media: extract runtime auto and orchestration`
 - `523e30a2d8` `Media: extract runtime planning helpers`
+- `8c68a4c63b` `Media: extract runtime API composition`
 - `36711383f6` `TTS: extract runtime registry`
 - `f36f8f9e2d` `TTS: extract runtime execution`
 - `fa4f53896e` `TTS: extract runtime setup`
@@ -256,7 +257,7 @@ What has not landed:
 - keeping the cutover inventory current as more surfaces move
 - broader lifecycle ownership beyond the loader state machine, session-owned activation state, and explicit discovery-policy, activation-policy, and finalization-policy outcomes, plus remaining policy semantics
 - host-owned registration surfaces beyond the first normalization helpers and low-risk channel, provider, gateway-method, HTTP-route, tool, CLI, service, command, context-engine, and hook compatibility write slices
-- remaining media compatibility-facade cleanup, plus catalog-backed runtime-family registration for embeddings, media, and TTS
+- catalog-backed runtime-family registration for embeddings, media, and TTS
 - SDK compatibility translation work
 - canonical event stages
 - canonical capability catalogs
