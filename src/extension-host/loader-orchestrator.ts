@@ -1,10 +1,13 @@
 import type { OpenClawConfig } from "../config/config.js";
-import { clearExtensionHostRegistryCache } from "../extension-host/loader-cache.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { clearPluginCommands } from "../plugins/commands.js";
 import type { PluginRegistry } from "../plugins/registry.js";
 import { createPluginRuntime, type CreatePluginRuntimeOptions } from "../plugins/runtime/index.js";
 import type { PluginLogger } from "../plugins/types.js";
+import {
+  clearExtensionHostLoaderHostState,
+  getExtensionHostDiscoveryWarningCache,
+} from "./loader-host-state.js";
 import { executeExtensionHostLoaderPipeline } from "./loader-pipeline.js";
 import { prepareExtensionHostLoaderPreflight } from "./loader-preflight.js";
 
@@ -22,13 +25,10 @@ export type ExtensionHostPluginLoadOptions = {
   mode?: "full" | "validate";
 };
 
-const openAllowlistWarningCache = new Set<string>();
-
 const defaultLogger = () => createSubsystemLogger("plugins");
 
 export function clearExtensionHostLoaderState(): void {
-  clearExtensionHostRegistryCache();
-  openAllowlistWarningCache.clear();
+  clearExtensionHostLoaderHostState();
 }
 
 export function loadExtensionHostPluginRegistry(
@@ -49,7 +49,7 @@ export function loadExtensionHostPluginRegistry(
     cache: options.cache,
     coreGatewayHandlers: options.coreGatewayHandlers,
     runtimeOptions: options.runtimeOptions,
-    warningCache: openAllowlistWarningCache,
+    warningCache: getExtensionHostDiscoveryWarningCache(),
     createRuntime: createPluginRuntime,
   });
 }
