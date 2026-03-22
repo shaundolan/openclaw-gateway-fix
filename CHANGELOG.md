@@ -311,6 +311,10 @@ Docs: https://docs.openclaw.ai
 - Plugins/runtime state: share plugin-facing infra singleton state across duplicate module graphs and keep session-binding adapter ownership stable until the active owner unregisters. (#50725) thanks @huntharo.
 - Discord/pickers: keep `/codex_resume --browse-projects` picker callbacks alive in Discord by sharing component callback state across duplicate module graphs, preserving callback fallbacks, and acknowledging matched plugin interactions before dispatch. (#51260) Thanks @huntharo.
 
+### Fixes
+
+- Agents/edit tool: show current file contents on exact-match failures and avoid false edit failures after successful writes.
+
 ## 2026.3.13
 
 ### Changes
