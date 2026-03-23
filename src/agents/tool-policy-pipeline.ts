@@ -63,6 +63,25 @@ export function buildDefaultToolPolicyPipelineSteps(params: {
   ];
 }
 
+/**
+ * Process-wide dedup set for tool policy warnings.
+ *
+ * The `applyToolPolicyPipeline` function is called on every tool invocation for every
+ * active agent session. When a tools.profile allowlist references core tool IDs that are
+ * unavailable in the current runtime (e.g. "read", "write", "edit" in a non-coding
+ * context), the warning fires synchronously on each call. With many concurrent agent
+ * sessions this produces thousands of redundant log lines per minute, flooding the
+ * Node.js event loop and starving the gateway WebSocket server's connection-upgrade
+ * handler — resulting in "closed before connect" (code 1006) and "gateway timeout"
+ * errors on `sessions_send` / `callGateway` calls.
+ *
+ * Fix: deduplicate identical warnings within the process lifetime. Each unique
+ * (label + entries) combination is only warned once. This matches the user-visible
+ * behaviour that matters (warn once that the config has unknown entries) while
+ * eliminating the synchronous per-call hot path.
+ */
+const _warnedMessages = new Set<string>();
+
 export function applyToolPolicyPipeline(params: {
   tools: AnyAgentTool[];
   toolMeta: (tool: AnyAgentTool) => { pluginId: string } | undefined;
@@ -101,9 +120,15 @@ export function applyToolPolicyPipeline(params: {
           hasGatedCoreEntries: gatedCoreEntries.length > 0,
           hasOtherEntries: otherEntries.length > 0,
         });
-        params.warn(
-          `tools: ${step.label} allowlist contains unknown entries (${entries}). ${suffix}`,
-        );
+        const message = `tools: ${step.label} allowlist contains unknown entries (${entries}). ${suffix}`;
+        // Deduplicate: only warn once per unique message per process lifetime.
+        // Repeated identical warnings on every tool call flood the event loop and
+        // degrade gateway WebSocket connection handling under multi-agent load.
+        // See: https://github.com/openclaw/openclaw/issues (gateway-stability fix)
+        if (!_warnedMessages.has(message)) {
+          _warnedMessages.add(message);
+          params.warn(message);
+        }
       }
       policy = resolved.policy;
     }
@@ -112,6 +137,14 @@ export function applyToolPolicyPipeline(params: {
     filtered = expanded ? filterToolsByPolicy(filtered, expanded) : filtered;
   }
   return filtered;
+}
+
+/**
+ * Reset the warning dedup set. Intended for use in tests only.
+ * @internal
+ */
+export function __resetWarnedMessagesForTest(): void {
+  _warnedMessages.clear();
 }
 
 function describeUnknownAllowlistSuffix(params: {

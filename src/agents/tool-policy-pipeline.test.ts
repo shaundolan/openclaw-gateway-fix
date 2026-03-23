@@ -1,7 +1,15 @@
-import { describe, expect, test } from "vitest";
-import { applyToolPolicyPipeline } from "./tool-policy-pipeline.js";
+import { afterEach, describe, expect, test } from "vitest";
+import {
+  __resetWarnedMessagesForTest,
+  applyToolPolicyPipeline,
+} from "./tool-policy-pipeline.js";
 
 type DummyTool = { name: string };
+
+afterEach(() => {
+  // Reset the process-level dedup set so each test gets a clean slate.
+  __resetWarnedMessagesForTest();
+});
 
 describe("tool-policy-pipeline", () => {
   test("strips allowlists that would otherwise disable core tools", () => {
@@ -87,5 +95,60 @@ describe("tool-policy-pipeline", () => {
       ],
     });
     expect(filtered.map((t) => (t as unknown as DummyTool).name)).toEqual(["exec"]);
+  });
+
+  test("deduplicates identical warnings across repeated pipeline calls", () => {
+    const warnings: string[] = [];
+    const tools = [{ name: "exec" }] as unknown as DummyTool[];
+    const runPipeline = () =>
+      applyToolPolicyPipeline({
+        // oxlint-disable-next-line typescript/no-explicit-any
+        tools: tools as any,
+        toolMeta: () => undefined,
+        warn: (msg) => warnings.push(msg),
+        steps: [
+          {
+            policy: { allow: ["read", "write", "edit"] },
+            label: "tools.profile (coding)",
+            stripPluginOnlyAllowlist: true,
+          },
+        ],
+      });
+
+    // Simulate the hot path: same warning fired many times per session.
+    for (let i = 0; i < 100; i++) {
+      runPipeline();
+    }
+
+    // Warning should only be emitted once despite 100 calls.
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain("unknown entries");
+  });
+
+  test("warns independently for distinct label+entries combinations", () => {
+    const warnings: string[] = [];
+    const tools = [{ name: "exec" }] as unknown as DummyTool[];
+
+    applyToolPolicyPipeline({
+      // oxlint-disable-next-line typescript/no-explicit-any
+      tools: tools as any,
+      toolMeta: () => undefined,
+      warn: (msg) => warnings.push(msg),
+      steps: [
+        {
+          policy: { allow: ["read"] },
+          label: "tools.profile (coding)",
+          stripPluginOnlyAllowlist: true,
+        },
+        {
+          policy: { allow: ["write"] },
+          label: "tools.allow",
+          stripPluginOnlyAllowlist: true,
+        },
+      ],
+    });
+
+    // Two distinct warnings — different labels.
+    expect(warnings.length).toBe(2);
   });
 });
