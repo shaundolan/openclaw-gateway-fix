@@ -1,41 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { EditToolOptions } from "@mariozechner/pi-coding-agent";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { wrapEditToolWithRecovery } from "./pi-tools.host-edit.js";
+import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxFsBridge, SandboxFsStat } from "./sandbox/fs-bridge.js";
-
-const mocks = vi.hoisted(() => ({
-  mode: "pass" as "pass" | "mismatch" | "post-write-throw",
-  beforeThrow: undefined as undefined | (() => Promise<void> | void),
-}));
-
-vi.mock("@mariozechner/pi-coding-agent", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mariozechner/pi-coding-agent")>();
-  return {
-    ...actual,
-    createEditTool: (cwd: string, options?: EditToolOptions) => {
-      const base = actual.createEditTool(cwd, options);
-      return {
-        ...base,
-        execute: async (...args: Parameters<typeof base.execute>) => {
-          if (mocks.mode === "pass") {
-            return base.execute(...args);
-          }
-          await mocks.beforeThrow?.();
-          if (mocks.mode === "mismatch") {
-            throw new Error(
-              "Could not find the exact text in demo.txt. The old text must match exactly including all whitespace and newlines.",
-            );
-          }
-          throw new Error("Simulated post-write failure (e.g. generateDiffString)");
-        },
-      };
-    },
-  };
-});
-
-const { createHostWorkspaceEditTool, createSandboxedEditTool } = await import("./pi-tools.read.js");
 
 function createInMemoryBridge(root: string, files: Map<string, string>): SandboxFsBridge {
   const resolveAbsolute = (filePath: string, cwd?: string) =>
@@ -96,21 +65,41 @@ describe("edit tool recovery hardening", () => {
   let tmpDir = "";
 
   afterEach(async () => {
-    mocks.mode = "pass";
-    mocks.beforeThrow = undefined;
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true });
       tmpDir = "";
     }
   });
 
+  function createRecoveredEditTool(params: {
+    root: string;
+    readFile: (absolutePath: string) => Promise<string>;
+    execute: AnyAgentTool["execute"];
+  }) {
+    const base = {
+      name: "edit",
+      execute: params.execute,
+    } as unknown as AnyAgentTool;
+    return wrapEditToolWithRecovery(base, {
+      root: params.root,
+      readFile: params.readFile,
+    });
+  }
+
   it("adds current file contents to exact-match mismatch errors", async () => {
-    mocks.mode = "mismatch";
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-edit-recovery-"));
     const filePath = path.join(tmpDir, "demo.txt");
     await fs.writeFile(filePath, "actual current content", "utf-8");
 
-    const tool = createHostWorkspaceEditTool(tmpDir);
+    const tool = createRecoveredEditTool({
+      root: tmpDir,
+      readFile: (absolutePath) => fs.readFile(absolutePath, "utf-8"),
+      execute: async () => {
+        throw new Error(
+          "Could not find the exact text in demo.txt. The old text must match exactly including all whitespace and newlines.",
+        );
+      },
+    });
     await expect(
       tool.execute(
         "call-1",
@@ -121,15 +110,18 @@ describe("edit tool recovery hardening", () => {
   });
 
   it("recovers success after a post-write throw when CRLF output contains newText and oldText is only a substring", async () => {
-    mocks.mode = "post-write-throw";
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-edit-recovery-"));
     const filePath = path.join(tmpDir, "demo.txt");
     await fs.writeFile(filePath, 'const value = "foo";\r\n', "utf-8");
-    mocks.beforeThrow = async () => {
-      await fs.writeFile(filePath, 'const value = "foobar";\r\n', "utf-8");
-    };
 
-    const tool = createHostWorkspaceEditTool(tmpDir);
+    const tool = createRecoveredEditTool({
+      root: tmpDir,
+      readFile: (absolutePath) => fs.readFile(absolutePath, "utf-8"),
+      execute: async () => {
+        await fs.writeFile(filePath, 'const value = "foobar";\r\n', "utf-8");
+        throw new Error("Simulated post-write failure (e.g. generateDiffString)");
+      },
+    });
     const result = await tool.execute(
       "call-1",
       {
@@ -148,12 +140,17 @@ describe("edit tool recovery hardening", () => {
   });
 
   it("does not recover false success when the file never changed", async () => {
-    mocks.mode = "post-write-throw";
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-edit-recovery-"));
     const filePath = path.join(tmpDir, "demo.txt");
     await fs.writeFile(filePath, "replacement already present", "utf-8");
 
-    const tool = createHostWorkspaceEditTool(tmpDir);
+    const tool = createRecoveredEditTool({
+      root: tmpDir,
+      readFile: (absolutePath) => fs.readFile(absolutePath, "utf-8"),
+      execute: async () => {
+        throw new Error("Simulated post-write failure (e.g. generateDiffString)");
+      },
+    });
     await expect(
       tool.execute(
         "call-1",
@@ -164,15 +161,18 @@ describe("edit tool recovery hardening", () => {
   });
 
   it("recovers deletion edits when the file changed and oldText is gone", async () => {
-    mocks.mode = "post-write-throw";
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-edit-recovery-"));
     const filePath = path.join(tmpDir, "demo.txt");
     await fs.writeFile(filePath, "before delete me after\n", "utf-8");
-    mocks.beforeThrow = async () => {
-      await fs.writeFile(filePath, "before  after\n", "utf-8");
-    };
 
-    const tool = createHostWorkspaceEditTool(tmpDir);
+    const tool = createRecoveredEditTool({
+      root: tmpDir,
+      readFile: (absolutePath) => fs.readFile(absolutePath, "utf-8"),
+      execute: async () => {
+        await fs.writeFile(filePath, "before  after\n", "utf-8");
+        throw new Error("Simulated post-write failure (e.g. generateDiffString)");
+      },
+    });
     const result = await tool.execute(
       "call-1",
       { path: filePath, oldText: "delete me", newText: "" },
@@ -187,17 +187,19 @@ describe("edit tool recovery hardening", () => {
   });
 
   it("applies the same recovery path to sandboxed edit tools", async () => {
-    mocks.mode = "post-write-throw";
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-edit-recovery-"));
     const filePath = path.join(tmpDir, "demo.txt");
     const files = new Map<string, string>([[filePath, "before old text after\n"]]);
-    mocks.beforeThrow = () => {
-      files.set(filePath, "before new text after\n");
-    };
 
-    const tool = createSandboxedEditTool({
+    const bridge = createInMemoryBridge(tmpDir, files);
+    const tool = createRecoveredEditTool({
       root: tmpDir,
-      bridge: createInMemoryBridge(tmpDir, files),
+      readFile: async (absolutePath: string) =>
+        (await bridge.readFile({ filePath: absolutePath, cwd: tmpDir })).toString("utf8"),
+      execute: async () => {
+        files.set(filePath, "before new text after\n");
+        throw new Error("Simulated post-write failure (e.g. generateDiffString)");
+      },
     });
     const result = await tool.execute(
       "call-1",
